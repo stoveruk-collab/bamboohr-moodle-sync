@@ -56,13 +56,39 @@ def put_state(ddb, since, offset):
 
 
 def fetch_bamboo_changes(since, api_key):
-    # NOTE: BambooHR's changed-since endpoint expects a timestamp.
-    # Adjust formatting as needed for your org if ISO strings are not accepted.
-    url = f"https://api.bamboohr.com/api/gateway.php/{BAMBOO_COMPANY_DOMAIN}/v1/employees/changed"
+    # BambooHR /employees/changed commonly returns XML.
+    url = f"https://{BAMBOO_COMPANY_DOMAIN}.bamboohr.com/api/v1/employees/changed/"
     resp = requests.get(url, params={"since": since}, auth=(api_key, "x"), timeout=30)
+
+    ct = resp.headers.get("content-type", "")
+    print("BAMBOO status:", resp.status_code, "content-type:", ct)
+    head = (resp.text or "")[:300].replace("\n", " ")
+    print("BAMBOO body head:", head)
+
     resp.raise_for_status()
-    data = resp.json()
-    return data
+    body = resp.text or ""
+
+    # XML path
+    if "xml" in ct.lower() or body.lstrip().startswith("<?xml"):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(body)
+        latest = root.attrib.get("latest") or root.attrib.get("lastChanged") or ""
+        employees = []
+        for e in root.findall(".//employee"):
+            employees.append({
+                "id": e.attrib.get("id"),
+                "action": e.attrib.get("action"),
+                "lastChanged": e.attrib.get("lastChanged")
+            })
+        return {"employees": employees, "lastChanged": latest}
+
+    # JSON path (if Bamboo ever returns JSON here)
+    if "json" in ct.lower():
+        return resp.json()
+
+    raise ValueError(f"Unexpected content-type: {ct}")
+
+
 
 
 def extract_changes(payload):
@@ -137,8 +163,11 @@ def main():
 
         put_state(ddb, next_since, next_offset)
 
-    except Exception:
-        errors += 1
+    except Exception as e:
+          errors += 1
+          import traceback
+          print("ERROR:", repr(e))
+          traceback.print_exc()
 
     summary = {
         "started_at": started_at,

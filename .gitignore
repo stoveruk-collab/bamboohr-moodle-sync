@@ -1,0 +1,3 @@
+app/__pycache__/
+*.pyc
+dynamodb wait table-exists --region eu-west-2 --table-name bamboohr-moodle-sync-dev-state
