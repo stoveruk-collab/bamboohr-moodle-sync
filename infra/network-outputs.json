@@ -1,0 +1,8 @@
+{
+  "ProjectName": "bamboohr-novalxp-sync2",
+  "Region": "eu-west-2",
+  "VpcId": "vpc-08f9c6954eb86dcc4",
+  "SubnetIds": ["subnet-0278bbe3ba8805a19", "subnet-09e51d5e50868079e"],
+  "SecurityGroupId": "sg-0cdf2a4653c451259",
+  "AvailabilityZones": ["eu-west-2a", "eu-west-2b"]
+}

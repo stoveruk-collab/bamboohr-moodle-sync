@@ -1,53 +1,77 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: BambooHR to Moodle sync on ECS Fargate with Scheduler, DynamoDB state, Secrets Manager, and SNS alerts.
+Description: >-
+  BambooHR to NovaLXP (Moodle) sync on ECS Fargate with EventBridge Scheduler,
+  DynamoDB state, Secrets Manager secrets, CloudWatch Logs, and SNS notifications.
 
 Parameters:
+  ProjectName:
+    Type: String
+    Default: bamboohr-novalxp-sync
+    Description: Prefix for named resources.
+    AllowedPattern: '^[a-z0-9-]{3,32}$'
+    ConstraintDescription: Use 3-32 lowercase letters, numbers, and hyphens.
   VpcId:
     Type: AWS::EC2::VPC::Id
-    Description: VPC for the ECS task.
+    Description: VPC that hosts the ECS task ENI.
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnets for the ECS task.
+    Description: Public subnet IDs for ECS task networking.
   SecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
-    Description: Security group for the ECS task.
+    Description: Security group ID attached to the ECS task.
   ScheduleExpression:
     Type: String
-    Default: rate(15 minutes)
-    Description: EventBridge Scheduler expression.
+    Default: cron(0 2 * * ? *)
+    Description: Nightly EventBridge schedule expression.
+  ScheduleTimezone:
+    Type: String
+    Default: Europe/London
+    Description: IANA timezone used by EventBridge Scheduler.
+  BatchSize:
+    Type: Number
+    Default: 100
+    Description: Records processed per run. Set to 0 for no batch limit.
+    MinValue: 0
+  InitialLookbackDays:
+    Type: Number
+    Default: 14
+    Description: Lookback window used only for brand new state rows.
+    MinValue: 0
   AlertEmail:
     Type: String
-    Description: Email for SNS notifications.
+    Description: Email address for job completion notifications.
   BambooCompanyDomain:
     Type: String
-    Description: BambooHR company subdomain (e.g., acme).
+    Description: BambooHR company domain prefix (e.g., acme for acme.bamboohr.com).
   MoodleBaseUrl:
     Type: String
-    Description: Moodle base URL (e.g., https://moodle.example.com).
+    Description: NovaLXP Moodle base URL (e.g., https://training.example.com).
 
 Resources:
   EcrRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: bamboohr-moodle-sync
+      RepositoryName: !Ref ProjectName
       ImageScanningConfiguration:
         ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
 
   EcsCluster:
     Type: AWS::ECS::Cluster
     Properties:
-      ClusterName: bamboohr-moodle-sync
+      ClusterName: !Sub '${ProjectName}-cluster'
 
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /ecs/bamboohr-moodle-sync
+      LogGroupName: !Sub '/ecs/${ProjectName}'
       RetentionInDays: 30
 
   StateTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: bamboohr-moodle-sync-state
+      TableName: !Sub '${ProjectName}-state'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: StateId
@@ -59,19 +83,21 @@ Resources:
   BambooSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: bamboohr-moodle-sync/bamboo
-      Description: BambooHR API credentials (JSON)
+      Name: !Sub '${ProjectName}/bamboohr'
+      Description: BambooHR credential placeholder. Update after deploy.
+      SecretString: '{"bamboohr_api_key":"REPLACE_ME"}'
 
   MoodleSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: bamboohr-moodle-sync/moodle
-      Description: Moodle API credentials (JSON)
+      Name: !Sub '${ProjectName}/moodle'
+      Description: Moodle token placeholder. Update after deploy.
+      SecretString: '{"moodle_token":"REPLACE_ME"}'
 
   AlertsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: bamboohr-moodle-sync-alerts
+      TopicName: !Sub '${ProjectName}-alerts'
 
   AlertsSubscription:
     Type: AWS::SNS::Subscription
@@ -83,7 +109,6 @@ Resources:
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: bamboohr-moodle-sync-execution
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -97,7 +122,6 @@ Resources:
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: bamboohr-moodle-sync-task
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -106,7 +130,7 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: bamboohr-moodle-sync-task
+        - PolicyName: !Sub '${ProjectName}-task-policy'
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -126,7 +150,7 @@ Resources:
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: bamboohr-moodle-sync
+      Family: !Sub '${ProjectName}-task'
       Cpu: '512'
       Memory: '1024'
       NetworkMode: awsvpc
@@ -136,7 +160,7 @@ Resources:
       TaskRoleArn: !GetAtt TaskRole.Arn
       ContainerDefinitions:
         - Name: sync
-          Image: !Sub "${EcrRepository.RepositoryUri}:latest"
+          Image: !Sub '${EcrRepository.RepositoryUri}:latest'
           Essential: true
           Environment:
             - Name: DDB_TABLE
@@ -147,8 +171,12 @@ Resources:
               Value: !Ref BambooCompanyDomain
             - Name: MOODLE_BASE_URL
               Value: !Ref MoodleBaseUrl
+            - Name: MOODLE_AUTH
+              Value: oidc
             - Name: BATCH_SIZE
-              Value: '100'
+              Value: !Sub '${BatchSize}'
+            - Name: INITIAL_LOOKBACK_DAYS
+              Value: !Sub '${InitialLookbackDays}'
             - Name: BAMBOO_SECRET_ARN
               Value: !Ref BambooSecret
             - Name: MOODLE_SECRET_ARN
@@ -163,7 +191,6 @@ Resources:
   SchedulerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: bamboohr-moodle-sync-scheduler
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -172,32 +199,37 @@ Resources:
               Service: scheduler.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: bamboohr-moodle-sync-scheduler
+        - PolicyName: !Sub '${ProjectName}-scheduler-policy'
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - ecs:RunTask
-                Resource: !Ref TaskDefinition
-              - Effect: Allow
-                Action:
-                  - ecs:RunTask
-                Resource: !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/*"
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
+              - Sid: RunTaskOnCluster
+                Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${ProjectName}-task:*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !GetAtt EcsCluster.Arn
+              - Sid: PassTaskRoles
+                Effect: Allow
+                Action: iam:PassRole
                 Resource:
                   - !GetAtt TaskExecutionRole.Arn
                   - !GetAtt TaskRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
 
   Schedule:
     Type: AWS::Scheduler::Schedule
     Properties:
-      Name: bamboohr-moodle-sync
+      Name: !Sub '${ProjectName}-nightly'
+      Description: Nightly BambooHR to NovaLXP sync
       ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: ENABLED
       FlexibleTimeWindow:
-        Mode: OFF
+        Mode: 'OFF'
       Target:
         Arn: !GetAtt EcsCluster.Arn
         RoleArn: !GetAtt SchedulerRole.Arn
@@ -205,6 +237,7 @@ Resources:
           TaskDefinitionArn: !Ref TaskDefinition
           LaunchType: FARGATE
           PlatformVersion: LATEST
+          TaskCount: 1
           NetworkConfiguration:
             AwsvpcConfiguration:
               AssignPublicIp: ENABLED
@@ -212,66 +245,89 @@ Resources:
               SecurityGroups:
                 - !Ref SecurityGroupId
 
-  EventsToSnsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: bamboohr-moodle-sync-events
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: events.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: bamboohr-moodle-sync-events
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sns:Publish
-                Resource: !Ref AlertsTopic
-
-  TaskStoppedRule:
+  TaskSucceededRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: bamboohr-moodle-sync-task-stopped
+      Name: !Sub '${ProjectName}-task-succeeded'
+      Description: Publish clean success notification when ECS task exits with code 0
       EventPattern:
         source:
           - aws.ecs
         detail-type:
           - ECS Task State Change
         detail:
-          lastStatus:
-            - STOPPED
           clusterArn:
             - !GetAtt EcsCluster.Arn
+          lastStatus:
+            - STOPPED
+          containers:
+            exitCode:
+              - 0
       Targets:
-        - Arn: !Ref AlertsTopic
-          Id: alerts
-          RoleArn: !GetAtt EventsToSnsRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              taskArn: $.detail.taskArn
-              stoppedReason: $.detail.stoppedReason
-              exitCode: $.detail.containers[0].exitCode
-              lastStatus: $.detail.lastStatus
-            InputTemplate: |
-              {
-                "message": "ECS task <taskArn> stopped. status=<lastStatus> exitCode=<exitCode> reason=<stoppedReason>"
-              }
+        - Id: AlertsTopicSuccessTarget
+          Arn: !Ref AlertsTopic
+          Input: !Sub '"${ProjectName}: BambooHR->NovaLXP sync SUCCEEDED."'
+
+  TaskFailedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ProjectName}-task-failed'
+      Description: Publish clean failure notification when ECS task exits non-zero
+      EventPattern:
+        source:
+          - aws.ecs
+        detail-type:
+          - ECS Task State Change
+        detail:
+          clusterArn:
+            - !GetAtt EcsCluster.Arn
+          lastStatus:
+            - STOPPED
+          containers:
+            exitCode:
+              - anything-but: 0
+      Targets:
+        - Id: AlertsTopicFailureTarget
+          Arn: !Ref AlertsTopic
+          Input: !Sub '"${ProjectName}: BambooHR->NovaLXP sync FAILED."'
+
+  AlertsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref AlertsTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventBridgePublish
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlertsTopic
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${ProjectName}-task-*'
 
 Outputs:
+  VpcId:
+    Description: VPC ID used by the ECS task network configuration.
+    Value: !Ref VpcId
   RepositoryUri:
-    Description: ECR repository URI
+    Description: ECR repository URI for docker push.
     Value: !GetAtt EcrRepository.RepositoryUri
-  ClusterName:
-    Description: ECS cluster name
-    Value: !Ref EcsCluster
+  ClusterArn:
+    Description: ECS cluster ARN.
+    Value: !GetAtt EcsCluster.Arn
   StateTableName:
-    Description: DynamoDB table name
+    Description: DynamoDB state table name.
     Value: !Ref StateTable
+  BambooSecretArn:
+    Description: Secrets Manager ARN for BambooHR key.
+    Value: !Ref BambooSecret
+  MoodleSecretArn:
+    Description: Secrets Manager ARN for Moodle token.
+    Value: !Ref MoodleSecret
   AlertsTopicArn:
-    Description: SNS topic ARN
+    Description: SNS topic ARN for notifications.
     Value: !Ref AlertsTopic
