@@ -72,8 +72,10 @@ Implementation: `app/sync.py`
 7. For each selected record:
    - build identity fields,
    - detect inactive/deleted -> suspend behavior,
-   - lookup Moodle user by `idnumber` (optional email fallback only when enabled),
-   - quarantine email-matched identity drift (non-canonical username/idnumber mismatch),
+   - derive canonical Moodle username from `MoodleUsernameSource` (`email` recommended for OIDC),
+   - lookup Moodle user by `idnumber`, then canonical username, then legacy `bamboo_<employee_id>` username,
+   - optional email fallback only when enabled,
+   - quarantine identity drift or canonical username collisions,
    - update existing user (including canonical username/auth enforcement) or create new user (`auth=oidc`).
 8. State advancement rules:
    - if **no errors** and batch not complete: keep `since`, increase `offset`.
@@ -105,6 +107,7 @@ Also ensure the token user has capabilities to read/create/update users.
 - `ScheduleTimezone` (IANA tz, e.g. `Europe/London`)
 - `BatchSize` (`0` = unlimited per run)
 - `InitialLookbackDays` (used only when state row does not yet exist)
+- `MoodleUsernameSource` (`email` recommended for Azure/OIDC environments; `bamboo_id` for legacy mode)
 - `AllowEmailFallback` (`false` recommended for strict canonical identity)
 - `EnforceCanonicalUsername` (`true` recommended)
 - `EnforceAuthOnUpdate` (`true` recommended)

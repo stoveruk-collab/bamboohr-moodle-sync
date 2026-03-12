@@ -143,6 +143,7 @@ Use CloudFormation deploy and set:
 - `ScheduleExpression='cron(0 3 * * ? *)'`
 - `ScheduleTimezone='Europe/London'`
 - `BatchSize=0`
+- `MoodleUsernameSource=email`
 - `AllowEmailFallback=false`
 - `EnforceCanonicalUsername=true`
 - `EnforceAuthOnUpdate=true`
@@ -166,6 +167,7 @@ aws cloudformation deploy \
     ScheduleTimezone='Europe/London' \
     BatchSize=0 \
     InitialLookbackDays=14 \
+    MoodleUsernameSource=email \
     AllowEmailFallback=false \
     EnforceCanonicalUsername=true \
     EnforceAuthOnUpdate=true \

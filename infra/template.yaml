@@ -49,7 +49,7 @@ Parameters:
   EnforceCanonicalUsername:
     Type: String
     Default: 'true'
-    Description: If true, update existing Moodle users to canonical bamboo_<employee_id> username.
+    Description: If true, update existing Moodle users to the configured canonical username.
     AllowedValues:
       - 'true'
       - 'false'
@@ -60,6 +60,13 @@ Parameters:
     AllowedValues:
       - 'true'
       - 'false'
+  MoodleUsernameSource:
+    Type: String
+    Default: email
+    Description: Canonical Moodle username source. Use email for OIDC-aligned usernames.
+    AllowedValues:
+      - email
+      - bamboo_id
   AlertEmail:
     Type: String
     Description: Email address for job completion notifications.
@@ -206,6 +213,8 @@ Resources:
               Value: !Ref EnforceCanonicalUsername
             - Name: ENFORCE_AUTH_ON_UPDATE
               Value: !Ref EnforceAuthOnUpdate
+            - Name: MOODLE_USERNAME_SOURCE
+              Value: !Ref MoodleUsernameSource
             - Name: BAMBOO_SECRET_ARN
               Value: !Ref BambooSecret
             - Name: MOODLE_SECRET_ARN

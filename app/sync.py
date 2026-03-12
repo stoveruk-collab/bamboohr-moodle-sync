@@ -50,6 +50,7 @@ ENFORCE_AUTH_ON_UPDATE = str(os.getenv("ENFORCE_AUTH_ON_UPDATE", "true")).strip(
     "y",
     "on",
 )
+MOODLE_USERNAME_SOURCE = str(os.getenv("MOODLE_USERNAME_SOURCE", "email")).strip().lower()
 
 DDB_TABLE = os.getenv("DDB_TABLE", "bamboohr-moodle-sync-state")
 STATE_ID = os.getenv("STATE_ID", "default")
@@ -136,6 +137,14 @@ def gen_password(length=20):
 
 def safe_username_from_empid(emp_id):
     return f"bamboo_{emp_id}"
+
+
+def canonical_username(employee_id, email):
+    if MOODLE_USERNAME_SOURCE == "bamboo_id":
+        return safe_username_from_empid(employee_id)
+    if email and EMAIL_RE.match(email):
+        return email
+    return ""
 
 
 def fetch_bamboo_changes(since, api_key):
@@ -367,15 +376,92 @@ def parse_directory_identity(employee_id, directory_record):
     ).lower()
 
     department = first_non_empty(directory_record.get("department"))
-    username = safe_username_from_empid(employee_id)
+    username = canonical_username(employee_id, email)
+    legacy_username = safe_username_from_empid(employee_id)
 
     return {
         "username": username,
+        "legacy_username": legacy_username,
         "firstname": first_name,
         "lastname": last_name,
         "email": email,
         "department": department,
     }
+
+
+def resolve_existing_moodle_user(moodle_token, employee_id, identity):
+    existing_user = moodle_get_user_by_field(moodle_token, "idnumber", employee_id)
+    if existing_user is not None:
+        return existing_user
+
+    candidate_fields = []
+    if identity["username"]:
+        candidate_fields.append(("username", identity["username"], "canonical_username"))
+    if identity["legacy_username"] and identity["legacy_username"] != identity["username"]:
+        candidate_fields.append(("username", identity["legacy_username"], "legacy_username"))
+    if (
+        ALLOW_EMAIL_FALLBACK
+        and identity["email"]
+        and EMAIL_RE.match(identity["email"])
+        and identity["email"] != identity["username"]
+    ):
+        candidate_fields.append(("email", identity["email"], "email_fallback"))
+
+    for field, value, match_source in candidate_fields:
+        candidate = moodle_get_user_by_field(moodle_token, field, value)
+        if candidate is None:
+            continue
+
+        matched_idnumber = str(candidate.get("idnumber") or "").strip()
+        if matched_idnumber and matched_idnumber != employee_id:
+            print(
+                "WARN: quarantined identity drift on fallback lookup",
+                json.dumps(
+                    {
+                        "employee_id": employee_id,
+                        "match_source": match_source,
+                        "match_field": field,
+                        "match_value": value,
+                        "matched_user_id": candidate.get("id"),
+                        "matched_username": candidate.get("username"),
+                        "matched_idnumber": candidate.get("idnumber"),
+                        "expected_username": identity["username"],
+                        "legacy_username": identity["legacy_username"],
+                    }
+                ),
+            )
+            return "quarantined_identity_drift"
+        return candidate
+
+    return None
+
+
+def canonical_username_collision(moodle_token, employee_id, current_user_id, identity):
+    if not identity["username"]:
+        return None
+
+    username_user = moodle_get_user_by_field(moodle_token, "username", identity["username"])
+    if username_user is None:
+        return None
+
+    if int(username_user["id"]) == current_user_id:
+        return None
+
+    print(
+        "WARN: quarantined canonical username collision",
+        json.dumps(
+            {
+                "employee_id": employee_id,
+                "current_user_id": current_user_id,
+                "canonical_username": identity["username"],
+                "collision_user_id": username_user.get("id"),
+                "collision_idnumber": username_user.get("idnumber"),
+                "collision_email": username_user.get("email"),
+                "legacy_username": identity["legacy_username"],
+            }
+        ),
+    )
+    return "quarantined_identity_drift"
 
 
 def process_moodle_record(record, directory_record, moodle_token):
@@ -388,45 +474,22 @@ def process_moodle_record(record, directory_record, moodle_token):
     suspended = is_inactive_bamboo_user(action, directory_record)
     identity = parse_directory_identity(employee_id, directory_record)
 
-    existing_user = moodle_get_user_by_field(moodle_token, "idnumber", employee_id)
-
-    if (
-        existing_user is None
-        and ALLOW_EMAIL_FALLBACK
-        and identity["email"]
-        and EMAIL_RE.match(identity["email"])
-    ):
-        email_matched_user = moodle_get_user_by_field(moodle_token, "email", identity["email"])
-        if email_matched_user is not None:
-            matched_username = str(email_matched_user.get("username") or "").strip().lower()
-            expected_username = identity["username"].lower()
-            matched_idnumber = str(email_matched_user.get("idnumber") or "").strip()
-            if matched_username != expected_username or (
-                matched_idnumber and matched_idnumber != employee_id
-            ):
-                print(
-                    "WARN: quarantined identity drift on email fallback",
-                    json.dumps(
-                        {
-                            "employee_id": employee_id,
-                            "email": identity["email"],
-                            "matched_user_id": email_matched_user.get("id"),
-                            "matched_username": email_matched_user.get("username"),
-                            "matched_idnumber": email_matched_user.get("idnumber"),
-                            "expected_username": identity["username"],
-                        }
-                    ),
-                )
-                return "quarantined_identity_drift"
-            existing_user = email_matched_user
+    existing_user = resolve_existing_moodle_user(moodle_token, employee_id, identity)
+    if existing_user == "quarantined_identity_drift":
+        return existing_user
 
     if existing_user is not None:
+        collision = canonical_username_collision(
+            moodle_token, employee_id, int(existing_user["id"]), identity
+        )
+        if collision is not None:
+            return collision
         update_payload = {
             "id": int(existing_user["id"]),
             "idnumber": employee_id,
             "suspended": 1 if suspended else 0,
         }
-        if ENFORCE_CANONICAL_USERNAME:
+        if ENFORCE_CANONICAL_USERNAME and identity["username"]:
             update_payload["username"] = identity["username"]
         if ENFORCE_AUTH_ON_UPDATE and MOODLE_AUTH:
             update_payload["auth"] = MOODLE_AUTH
@@ -452,6 +515,13 @@ def process_moodle_record(record, directory_record, moodle_token):
 
     if not EMAIL_RE.match(identity["email"]):
         return "skipped_invalid_email"
+
+    if not identity["username"]:
+        return "skipped_no_email"
+
+    collision = canonical_username_collision(moodle_token, employee_id, -1, identity)
+    if collision is not None:
+        return collision
 
     create_payload = {
         "username": identity["username"],
