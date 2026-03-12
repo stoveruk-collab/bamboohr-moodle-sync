@@ -72,8 +72,9 @@ Implementation: `app/sync.py`
 7. For each selected record:
    - build identity fields,
    - detect inactive/deleted -> suspend behavior,
-   - lookup Moodle user by `idnumber` (then email fallback),
-   - update existing user or create new user (`auth=oidc`).
+   - lookup Moodle user by `idnumber` (optional email fallback only when enabled),
+   - quarantine email-matched identity drift (non-canonical username/idnumber mismatch),
+   - update existing user (including canonical username/auth enforcement) or create new user (`auth=oidc`).
 8. State advancement rules:
    - if **no errors** and batch not complete: keep `since`, increase `offset`.
    - if **no errors** and batch complete: set `since=latest`, reset `offset=0`.
@@ -104,6 +105,9 @@ Also ensure the token user has capabilities to read/create/update users.
 - `ScheduleTimezone` (IANA tz, e.g. `Europe/London`)
 - `BatchSize` (`0` = unlimited per run)
 - `InitialLookbackDays` (used only when state row does not yet exist)
+- `AllowEmailFallback` (`false` recommended for strict canonical identity)
+- `EnforceCanonicalUsername` (`true` recommended)
+- `EnforceAuthOnUpdate` (`true` recommended)
 - `AlertEmail`
 - `BambooCompanyDomain`
 - `MoodleBaseUrl`

@@ -26,6 +26,30 @@ def env_int(name, default):
 BATCH_SIZE = env_int("BATCH_SIZE", 100)
 INITIAL_LOOKBACK_DAYS = env_int("INITIAL_LOOKBACK_DAYS", 14)
 HTTP_TIMEOUT_SECONDS = env_int("HTTP_TIMEOUT_SECONDS", 30)
+SKIP_RECORD_ERRORS = str(os.getenv("SKIP_RECORD_ERRORS", "true")).strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+)
+ALLOW_EMAIL_FALLBACK = str(os.getenv("ALLOW_EMAIL_FALLBACK", "false")).strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+)
+ENFORCE_CANONICAL_USERNAME = str(
+    os.getenv("ENFORCE_CANONICAL_USERNAME", "true")
+).strip().lower() in ("1", "true", "yes", "y", "on")
+ENFORCE_AUTH_ON_UPDATE = str(os.getenv("ENFORCE_AUTH_ON_UPDATE", "true")).strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+)
 
 DDB_TABLE = os.getenv("DDB_TABLE", "bamboohr-moodle-sync-state")
 STATE_ID = os.getenv("STATE_ID", "default")
@@ -243,12 +267,15 @@ def moodle_call(token, function_name, params):
         ) from exc
 
     if isinstance(parsed, dict) and parsed.get("exception"):
+        debug_info = parsed.get("debuginfo")
+        debug_suffix = f" | debug: {debug_info}" if debug_info else ""
         raise RuntimeError(
-            "Moodle %s failed: %s | %s"
+            "Moodle %s failed: %s | %s%s"
             % (
                 function_name,
                 parsed.get("errorcode", "unknown"),
                 parsed.get("message", "no message"),
+                debug_suffix,
             )
         )
 
@@ -363,8 +390,35 @@ def process_moodle_record(record, directory_record, moodle_token):
 
     existing_user = moodle_get_user_by_field(moodle_token, "idnumber", employee_id)
 
-    if existing_user is None and identity["email"] and EMAIL_RE.match(identity["email"]):
-        existing_user = moodle_get_user_by_field(moodle_token, "email", identity["email"])
+    if (
+        existing_user is None
+        and ALLOW_EMAIL_FALLBACK
+        and identity["email"]
+        and EMAIL_RE.match(identity["email"])
+    ):
+        email_matched_user = moodle_get_user_by_field(moodle_token, "email", identity["email"])
+        if email_matched_user is not None:
+            matched_username = str(email_matched_user.get("username") or "").strip().lower()
+            expected_username = identity["username"].lower()
+            matched_idnumber = str(email_matched_user.get("idnumber") or "").strip()
+            if matched_username != expected_username or (
+                matched_idnumber and matched_idnumber != employee_id
+            ):
+                print(
+                    "WARN: quarantined identity drift on email fallback",
+                    json.dumps(
+                        {
+                            "employee_id": employee_id,
+                            "email": identity["email"],
+                            "matched_user_id": email_matched_user.get("id"),
+                            "matched_username": email_matched_user.get("username"),
+                            "matched_idnumber": email_matched_user.get("idnumber"),
+                            "expected_username": identity["username"],
+                        }
+                    ),
+                )
+                return "quarantined_identity_drift"
+            existing_user = email_matched_user
 
     if existing_user is not None:
         update_payload = {
@@ -372,6 +426,10 @@ def process_moodle_record(record, directory_record, moodle_token):
             "idnumber": employee_id,
             "suspended": 1 if suspended else 0,
         }
+        if ENFORCE_CANONICAL_USERNAME:
+            update_payload["username"] = identity["username"]
+        if ENFORCE_AUTH_ON_UPDATE and MOODLE_AUTH:
+            update_payload["auth"] = MOODLE_AUTH
         if identity["firstname"]:
             update_payload["firstname"] = identity["firstname"]
         if identity["lastname"]:
@@ -403,7 +461,6 @@ def process_moodle_record(record, directory_record, moodle_token):
         "lastname": identity["lastname"],
         "email": identity["email"],
         "idnumber": employee_id,
-        "suspended": 1 if suspended else 0,
     }
     if identity["department"]:
         create_payload["department"] = identity["department"]
@@ -457,6 +514,8 @@ def main():
     skipped_no_email = 0
     skipped_invalid_email = 0
     skipped_deleted = 0
+    quarantined_identity_drift = 0
+    skipped_record_errors = 0
 
     next_since = since
     next_offset = offset
@@ -497,12 +556,17 @@ def main():
                         skipped_invalid_email += 1
                     elif outcome == "skipped_deleted":
                         skipped_deleted += 1
+                    elif outcome == "quarantined_identity_drift":
+                        quarantined_identity_drift += 1
                 except Exception as record_error:
-                    errors += 1
                     print(
                         "ERROR: record processing failed",
                         json.dumps({"record": record, "error": repr(record_error)}),
                     )
+                    if SKIP_RECORD_ERRORS:
+                        skipped_record_errors += 1
+                    else:
+                        errors += 1
 
             consumed = len(batch)
 
@@ -540,6 +604,8 @@ def main():
         "skipped_no_email": skipped_no_email,
         "skipped_invalid_email": skipped_invalid_email,
         "skipped_deleted": skipped_deleted,
+        "quarantined_identity_drift": quarantined_identity_drift,
+        "skipped_record_errors": skipped_record_errors,
         "errors": errors,
         "latest": latest,
         "next_since": next_since,

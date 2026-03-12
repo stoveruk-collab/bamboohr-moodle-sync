@@ -37,6 +37,29 @@ Parameters:
     Default: 14
     Description: Lookback window used only for brand new state rows.
     MinValue: 0
+  AllowEmailFallback:
+    Type: String
+    Default: 'false'
+    Description: >-
+      If true, fallback to Moodle email lookup when idnumber is not found.
+      Keep false to avoid adopting non-canonical/manual accounts.
+    AllowedValues:
+      - 'true'
+      - 'false'
+  EnforceCanonicalUsername:
+    Type: String
+    Default: 'true'
+    Description: If true, update existing Moodle users to canonical bamboo_<employee_id> username.
+    AllowedValues:
+      - 'true'
+      - 'false'
+  EnforceAuthOnUpdate:
+    Type: String
+    Default: 'true'
+    Description: If true, enforce MOODLE_AUTH during updates to keep auth provider consistent.
+    AllowedValues:
+      - 'true'
+      - 'false'
   AlertEmail:
     Type: String
     Description: Email address for job completion notifications.
@@ -177,6 +200,12 @@ Resources:
               Value: !Sub '${BatchSize}'
             - Name: INITIAL_LOOKBACK_DAYS
               Value: !Sub '${InitialLookbackDays}'
+            - Name: ALLOW_EMAIL_FALLBACK
+              Value: !Ref AllowEmailFallback
+            - Name: ENFORCE_CANONICAL_USERNAME
+              Value: !Ref EnforceCanonicalUsername
+            - Name: ENFORCE_AUTH_ON_UPDATE
+              Value: !Ref EnforceAuthOnUpdate
             - Name: BAMBOO_SECRET_ARN
               Value: !Ref BambooSecret
             - Name: MOODLE_SECRET_ARN

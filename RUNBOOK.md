@@ -97,6 +97,7 @@ Look for the JSON summary line. Important fields:
 - `created`
 - `updated`
 - `suspended`
+- `quarantined_identity_drift`
 - `since`, `next_since`
 - `offset`, `next_offset`
 - `total_changed`
@@ -142,6 +143,9 @@ Use CloudFormation deploy and set:
 - `ScheduleExpression='cron(0 3 * * ? *)'`
 - `ScheduleTimezone='Europe/London'`
 - `BatchSize=0`
+- `AllowEmailFallback=false`
+- `EnforceCanonicalUsername=true`
+- `EnforceAuthOnUpdate=true`
 
 ```bash
 ALERT_EMAIL='kamila.bajaria@finova.tech'
@@ -162,6 +166,9 @@ aws cloudformation deploy \
     ScheduleTimezone='Europe/London' \
     BatchSize=0 \
     InitialLookbackDays=14 \
+    AllowEmailFallback=false \
+    EnforceCanonicalUsername=true \
+    EnforceAuthOnUpdate=true \
     AlertEmail="$ALERT_EMAIL" \
     BambooCompanyDomain="$BAMBOO_DOMAIN" \
     MoodleBaseUrl="$MOODLE_URL" \
