@@ -27,6 +27,13 @@ Parameters:
     Type: String
     Default: Europe/London
     Description: IANA timezone used by EventBridge Scheduler.
+  ScheduleState:
+    Type: String
+    Default: ENABLED
+    Description: EventBridge Scheduler state. Set DISABLED to suspend scheduled runs.
+    AllowedValues:
+      - ENABLED
+      - DISABLED
   BatchSize:
     Type: Number
     Default: 100
@@ -265,7 +272,7 @@ Resources:
       Description: Nightly BambooHR to NovaLXP sync
       ScheduleExpression: !Ref ScheduleExpression
       ScheduleExpressionTimezone: !Ref ScheduleTimezone
-      State: ENABLED
+      State: !Ref ScheduleState
       FlexibleTimeWindow:
         Mode: 'OFF'
       Target:

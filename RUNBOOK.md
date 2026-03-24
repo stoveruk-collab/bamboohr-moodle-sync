@@ -38,7 +38,7 @@ export SG_ID=sg-0cdf2a4653c451259
 ```
 
 ## 2) Daily Expected State
-- Schedule: 03:00 London time daily.
+- Schedule: suspended until further notice (`State=DISABLED`).
 - Batch mode: unlimited catch-up (`BatchSize=0`).
 - Notification email:
   - success: `<ProjectName>: BambooHR->NovaLXP sync SUCCEEDED.`
@@ -135,13 +135,14 @@ aws scheduler get-schedule \
 Expected:
 - `Expression = cron(0 3 * * ? *)`
 - `Timezone = Europe/London`
-- `State = ENABLED`
+- `State = DISABLED`
 
 ## 5) Common Operational Changes
 ### 5.1 Update schedule and throughput parameters
 Use CloudFormation deploy and set:
 - `ScheduleExpression='cron(0 3 * * ? *)'`
 - `ScheduleTimezone='Europe/London'`
+- `ScheduleState=DISABLED`
 - `BatchSize=0`
 - `MoodleUsernameSource=email`
 - `AllowEmailFallback=false`
@@ -165,6 +166,7 @@ aws cloudformation deploy \
     SecurityGroupId=$SG_ID \
     ScheduleExpression='cron(0 3 * * ? *)' \
     ScheduleTimezone='Europe/London' \
+    ScheduleState=DISABLED \
     BatchSize=0 \
     InitialLookbackDays=14 \
     MoodleUsernameSource=email \

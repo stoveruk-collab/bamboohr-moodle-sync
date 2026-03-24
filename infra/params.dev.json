@@ -5,6 +5,7 @@
   {"ParameterKey": "SecurityGroupId", "ParameterValue": "sg-xxxxxxxx"},
   {"ParameterKey": "ScheduleExpression", "ParameterValue": "cron(0 3 * * ? *)"},
   {"ParameterKey": "ScheduleTimezone", "ParameterValue": "Europe/London"},
+  {"ParameterKey": "ScheduleState", "ParameterValue": "DISABLED"},
   {"ParameterKey": "BatchSize", "ParameterValue": "0"},
   {"ParameterKey": "InitialLookbackDays", "ParameterValue": "14"},
   {"ParameterKey": "AlertEmail", "ParameterValue": "novalxp-admin@example.com"},

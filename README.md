@@ -105,6 +105,7 @@ Also ensure the token user has capabilities to read/create/update users.
 - `VpcId`, `SubnetIds`, `SecurityGroupId` (public networking in this deployment)
 - `ScheduleExpression` (cron)
 - `ScheduleTimezone` (IANA tz, e.g. `Europe/London`)
+- `ScheduleState` (`ENABLED` or `DISABLED`; use `DISABLED` to suspend the scheduler)
 - `BatchSize` (`0` = unlimited per run)
 - `InitialLookbackDays` (used only when state row does not yet exist)
 - `MoodleUsernameSource` (`email` recommended for Azure/OIDC environments; `bamboo_id` for legacy mode)
