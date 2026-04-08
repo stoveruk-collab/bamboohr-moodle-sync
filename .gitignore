@@ -1,3 +1,12 @@
+.DS_Store
 app/__pycache__/
 *.pyc
-dynamodb wait table-exists --region eu-west-2 --table-name bamboohr-moodle-sync-dev-state
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+__pycache__/
+
+# Local infra/operator state
+infra/network-outputs.json
+*.local.env

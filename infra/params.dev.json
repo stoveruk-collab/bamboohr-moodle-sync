@@ -1,5 +1,5 @@
 [
-  {"ParameterKey": "ProjectName", "ParameterValue": "bamboohr-novalxp-sync"},
+  {"ParameterKey": "ProjectName", "ParameterValue": "bamboohr-moodle-sync"},
   {"ParameterKey": "VpcId", "ParameterValue": "vpc-xxxxxxxx"},
   {"ParameterKey": "SubnetIds", "ParameterValue": "subnet-aaaaaaaa,subnet-bbbbbbbb"},
   {"ParameterKey": "SecurityGroupId", "ParameterValue": "sg-xxxxxxxx"},
@@ -8,7 +8,7 @@
   {"ParameterKey": "ScheduleState", "ParameterValue": "DISABLED"},
   {"ParameterKey": "BatchSize", "ParameterValue": "0"},
   {"ParameterKey": "InitialLookbackDays", "ParameterValue": "14"},
-  {"ParameterKey": "AlertEmail", "ParameterValue": "novalxp-admin@example.com"},
+  {"ParameterKey": "AlertEmail", "ParameterValue": "admin@example.com"},
   {"ParameterKey": "BambooCompanyDomain", "ParameterValue": "acme"},
-  {"ParameterKey": "MoodleBaseUrl", "ParameterValue": "https://novalxp.example.com"}
+  {"ParameterKey": "MoodleBaseUrl", "ParameterValue": "https://moodle.example.com"}
 ]

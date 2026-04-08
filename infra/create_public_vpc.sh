@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_NAME="bamboohr-novalxp-sync"
+PROJECT_NAME="bamboohr-moodle-sync"
 AWS_REGION="us-east-1"
 VPC_CIDR="10.42.0.0/16"
 SUBNET_A_CIDR="10.42.1.0/24"

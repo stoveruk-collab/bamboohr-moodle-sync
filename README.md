@@ -1,9 +1,9 @@
-# BambooHR -> NovaLXP (Moodle) Sync on AWS
+# BambooHR -> Moodle Sync on AWS
 
 This repository deploys and runs a scheduled sync service that:
 - reads BambooHR employee changes,
 - maps employee attributes from BambooHR directory data,
-- creates/updates/suspends users in NovaLXP (Moodle),
+- creates/updates/suspends users in Moodle,
 - resumes safely after downtime using DynamoDB state.
 
 ## Documentation Split

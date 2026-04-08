@@ -6,7 +6,7 @@ Description: >-
 Parameters:
   ProjectName:
     Type: String
-    Default: bamboohr-novalxp-sync
+    Default: bamboohr-moodle-sync
     Description: Prefix for named resources.
     AllowedPattern: '^[a-z0-9-]{3,32}$'
     ConstraintDescription: Use 3-32 lowercase letters, numbers, and hyphens.

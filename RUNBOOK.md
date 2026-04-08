@@ -1,108 +1,73 @@
-# BambooHR -> NovaLXP Sync Runbook
+# BambooHR -> Moodle Sync Runbook
 
 This runbook is for operators. It covers routine operations, manual runs, monitoring, and troubleshooting.
 
-## Operator Quick Start (5 Commands)
-Run these in order for a one-off health check:
+## Operator Quick Start
+
+Set placeholder values for your own environment before running any commands:
 
 ```bash
-# 1) Session context
-export AWS_PROFILE=personal AWS_REGION=eu-west-2 AWS_PAGER="" STACK_NAME=bamboohr-novalxp-sync2 CLUSTER_ARN=arn:aws:ecs:eu-west-2:992057086831:cluster/bamboohr-novalxp-sync2-cluster SUBNET_1=subnet-0278bbe3ba8805a19 SUBNET_2=subnet-09e51d5e50868079e SG_ID=sg-0cdf2a4653c451259
-
-# 2) Start one task
-TASK_DEF=$(aws ecs list-task-definitions --region "$AWS_REGION" --family-prefix "${STACK_NAME}-task" --sort DESC --max-items 1 --query "taskDefinitionArns[0]" --output text); TASK_ARN=$(aws ecs run-task --region "$AWS_REGION" --cluster "$CLUSTER_ARN" --launch-type FARGATE --task-definition "$TASK_DEF" --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" --query "tasks[0].taskArn" --output text); echo "$TASK_ARN"
-
-# 3) Wait for stop
-aws ecs wait tasks-stopped --region "$AWS_REGION" --cluster "$CLUSTER_ARN" --tasks "$TASK_ARN"
-
-# 4) Confirm task result
-aws ecs describe-tasks --region "$AWS_REGION" --cluster "$CLUSTER_ARN" --tasks "$TASK_ARN" --query "tasks[0].{ExitCode:containers[0].exitCode,LastStatus:lastStatus,StoppedReason:stoppedReason}" --output table
-
-# 5) Check latest app summary logs
-aws logs tail "/ecs/${STACK_NAME}" --since 30m --format short
-```
-
-## 1) Standard Operator Context
-Set these once per terminal session:
-
-```bash
-export AWS_PROFILE=personal
+export AWS_PROFILE=your-profile
 export AWS_REGION=eu-west-2
 export AWS_PAGER=""
-
-export STACK_NAME=bamboohr-novalxp-sync2
-export CLUSTER_ARN=arn:aws:ecs:eu-west-2:992057086831:cluster/bamboohr-novalxp-sync2-cluster
-export SUBNET_1=subnet-0278bbe3ba8805a19
-export SUBNET_2=subnet-09e51d5e50868079e
-export SG_ID=sg-0cdf2a4653c451259
+export STACK_NAME=bamboohr-moodle-sync-prod
+export CLUSTER_ARN=arn:aws:ecs:<region>:<account-id>:cluster/<cluster-name>
+export SUBNET_1=subnet-aaaaaaaa
+export SUBNET_2=subnet-bbbbbbbb
+export SG_ID=sg-xxxxxxxx
 ```
 
-## 2) Daily Expected State
-- Schedule: suspended until further notice (`State=DISABLED`).
-- Batch mode: unlimited catch-up (`BatchSize=0`).
-- Notification email:
-  - success: `<ProjectName>: BambooHR->NovaLXP sync SUCCEEDED.`
-  - failure: `<ProjectName>: BambooHR->NovaLXP sync FAILED.`
+Start one task:
 
-## 3) Manual Run (One-Off)
-### 3.1 Start task
 ```bash
-TASK_DEF=$(aws ecs list-task-definitions \
-  --region "$AWS_REGION" \
-  --family-prefix "${STACK_NAME}-task" \
-  --sort DESC \
-  --max-items 1 \
-  --query "taskDefinitionArns[0]" \
-  --output text)
-
-TASK_ARN=$(aws ecs run-task \
-  --region "$AWS_REGION" \
-  --cluster "$CLUSTER_ARN" \
-  --launch-type FARGATE \
-  --task-definition "$TASK_DEF" \
-  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" \
-  --query "tasks[0].taskArn" \
-  --output text)
-
+TASK_DEF=$(aws ecs list-task-definitions --region "$AWS_REGION" --family-prefix "${STACK_NAME}-task" --sort DESC --max-items 1 --query "taskDefinitionArns[0]" --output text)
+TASK_ARN=$(aws ecs run-task --region "$AWS_REGION" --cluster "$CLUSTER_ARN" --launch-type FARGATE --task-definition "$TASK_DEF" --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" --query "tasks[0].taskArn" --output text)
 echo "$TASK_ARN"
 ```
 
-### 3.2 Wait for completion
+Wait for completion:
+
 ```bash
-aws ecs wait tasks-stopped \
-  --region "$AWS_REGION" \
-  --cluster "$CLUSTER_ARN" \
-  --tasks "$TASK_ARN"
+aws ecs wait tasks-stopped --region "$AWS_REGION" --cluster "$CLUSTER_ARN" --tasks "$TASK_ARN"
 ```
 
-### 3.3 Check exit status
+Check exit status:
+
 ```bash
-aws ecs describe-tasks \
-  --region "$AWS_REGION" \
-  --cluster "$CLUSTER_ARN" \
-  --tasks "$TASK_ARN" \
-  --query "tasks[0].{ExitCode:containers[0].exitCode,LastStatus:lastStatus,StoppedReason:stoppedReason}" \
-  --output table
+aws ecs describe-tasks --region "$AWS_REGION" --cluster "$CLUSTER_ARN" --tasks "$TASK_ARN" --query "tasks[0].{ExitCode:containers[0].exitCode,LastStatus:lastStatus,StoppedReason:stoppedReason}" --output table
 ```
 
-## 4) Monitoring and Validation
-### 4.1 Tail app logs
+Tail logs:
+
 ```bash
-aws logs tail "/ecs/${STACK_NAME}" --since 2h --format short
+aws logs tail "/ecs/${STACK_NAME}" --since 30m --format short
 ```
 
-Look for the JSON summary line. Important fields:
-- `errors`
-- `processed`
-- `created`
-- `updated`
-- `suspended`
-- `quarantined_identity_drift`
-- `since`, `next_since`
-- `offset`, `next_offset`
-- `total_changed`
+## Standard Operator Context
 
-### 4.2 Check state row
+Use environment variables similar to:
+
+```bash
+export AWS_PROFILE=your-profile
+export AWS_REGION=eu-west-2
+export AWS_PAGER=""
+export STACK_NAME=bamboohr-moodle-sync-prod
+export CLUSTER_ARN=arn:aws:ecs:<region>:<account-id>:cluster/<cluster-name>
+export SUBNET_1=subnet-aaaaaaaa
+export SUBNET_2=subnet-bbbbbbbb
+export SG_ID=sg-xxxxxxxx
+```
+
+## Expected State
+
+- Schedule may be enabled or disabled depending on release state.
+- Batch size may be capped or unlimited.
+- Notification messages are emitted through SNS/EventBridge wiring defined in infrastructure.
+
+## Monitoring and Validation
+
+Check the state row:
+
 ```bash
 TABLE_NAME=$(aws cloudformation describe-stacks \
   --region "$AWS_REGION" \
@@ -117,12 +82,8 @@ aws dynamodb get-item \
   --output table
 ```
 
-Interpretation:
-- Healthy progression: `offset` increases until end of window.
-- Window completion: `offset` resets to `0` and `since` advances to Bamboo `latest`.
-- Error case: `since` and `offset` stay pinned to retry same window next run.
+Check the scheduler:
 
-### 4.3 Check schedule config
 ```bash
 aws scheduler get-schedule \
   --region "$AWS_REGION" \
@@ -132,36 +93,23 @@ aws scheduler get-schedule \
   --output table
 ```
 
-Expected:
-- `Expression = cron(0 3 * * ? *)`
-- `Timezone = Europe/London`
-- `State = DISABLED`
+## Operational Changes
 
-## 5) Common Operational Changes
-### 5.1 Update schedule and throughput parameters
-Use CloudFormation deploy and set:
-- `ScheduleExpression='cron(0 3 * * ? *)'`
-- `ScheduleTimezone='Europe/London'`
-- `ScheduleState=DISABLED`
-- `BatchSize=0`
-- `MoodleUsernameSource=email`
-- `AllowEmailFallback=false`
-- `EnforceCanonicalUsername=true`
-- `EnforceAuthOnUpdate=true`
+Redeploy CloudFormation with your own parameter values:
 
 ```bash
-ALERT_EMAIL='kamila.bajaria@finova.tech'
-BAMBOO_DOMAIN='finova'
-MOODLE_URL='https://learn.novalxp.co.uk'
+ALERT_EMAIL='admin@example.com'
+BAMBOO_DOMAIN='your-bamboo-domain'
+MOODLE_URL='https://moodle.example.com'
 
 aws cloudformation deploy \
   --region "$AWS_REGION" \
   --stack-name "$STACK_NAME" \
-  --template-file /Users/stovermcilwain/Projects/bamboohr-moodle-sync/infra/template.yaml \
+  --template-file infra/template.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     ProjectName="$STACK_NAME" \
-    VpcId=vpc-08f9c6954eb86dcc4 \
+    VpcId=vpc-xxxxxxxx \
     SubnetIds=$SUBNET_1,$SUBNET_2 \
     SecurityGroupId=$SG_ID \
     ScheduleExpression='cron(0 3 * * ? *)' \
@@ -179,59 +127,9 @@ aws cloudformation deploy \
   --no-cli-pager
 ```
 
-### 5.2 Rewind state by ~2 weeks (one-time catch-up)
-```bash
-SINCE=$(python3 -c 'from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
-NOW=$(python3 -c 'from datetime import datetime,timezone; print(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))')
+## Secret Rotation
 
-aws dynamodb put-item \
-  --region "$AWS_REGION" \
-  --table-name "$TABLE_NAME" \
-  --item "{\"StateId\":{\"S\":\"default\"},\"since\":{\"S\":\"$SINCE\"},\"offset\":{\"N\":\"0\"},\"updatedAt\":{\"S\":\"$NOW\"}}"
-```
-
-## 6) Troubleshooting
-### Symptom: `accessexception` from Moodle user lookup
-Meaning:
-- Moodle token/service lacks rights for lookup functions.
-
-Actions:
-1. Confirm enabled functions for token service:
-   - `core_user_get_users`
-   - `core_user_get_users_by_field`
-   - `core_user_create_users`
-   - `core_user_update_users`
-2. Confirm token user capabilities to read/create/update users.
-3. Re-run one manual task and verify summary `errors=0`.
-
-### Symptom: Bamboo 403 on changed or directory endpoints
-Meaning:
-- Bamboo API key does not have required employee visibility.
-
-Actions:
-1. Grant API user access to target employee scope.
-2. Confirm directory access in Bamboo.
-3. Re-run one manual task.
-
-### Symptom: No SNS email received
-Actions:
-1. Confirm subscription is `Confirmed`.
-2. Confirm task actually reached `STOPPED`.
-3. Confirm EventBridge rules exist:
-   - `${STACK_NAME}-task-succeeded`
-   - `${STACK_NAME}-task-failed`
-4. Confirm SNS topic policy allows EventBridge publish.
-
-### Symptom: Task fails before processing
-Actions:
-1. Check `/ecs/${STACK_NAME}` logs.
-2. Verify secrets exist and contain correct keys:
-   - Bamboo secret key: `bamboohr_api_key`
-   - Moodle secret key: `moodle_token`
-3. Verify task can reach public Bamboo and Moodle endpoints.
-
-## 7) Secret Rotation
-Update secret values without infrastructure redeploy:
+Update secret values without redeploying infrastructure:
 
 ```bash
 BAMBOO_ARN=$(aws cloudformation describe-stacks \
@@ -249,3 +147,13 @@ MOODLE_ARN=$(aws cloudformation describe-stacks \
 aws secretsmanager put-secret-value --region "$AWS_REGION" --secret-id "$BAMBOO_ARN" --secret-string '{"bamboohr_api_key":"REPLACE_ME"}'
 aws secretsmanager put-secret-value --region "$AWS_REGION" --secret-id "$MOODLE_ARN" --secret-string '{"moodle_token":"REPLACE_ME"}'
 ```
+
+## Troubleshooting
+
+Typical checks:
+
+1. Verify ECS task exit status.
+2. Verify `/ecs/${STACK_NAME}` logs.
+3. Confirm Secrets Manager entries exist and contain expected keys.
+4. Confirm the BambooHR API user has access to the relevant directory and changed-employee endpoints.
+5. Confirm the Moodle token has rights for the required user lookup and user mutation functions.
